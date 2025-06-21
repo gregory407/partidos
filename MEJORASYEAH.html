@@ -1,0 +1,163 @@
+<!DOCTYPE html> 
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Estadísticas de Partidos</title>
+</head>
+<body>
+  <h1>Consultar partidos de un equipo</h1>
+
+  <label for="equipoID">ID del equipo:</label>
+  <input type="number" id="equipoID" placeholder="Ej: 2315" />
+
+  <br><br>
+
+  <label for="ligaID">ID de la liga:</label>
+  <input type="number" id="ligaID" placeholder="Ej: 265" />
+
+  <br><br>
+
+  <label for="temporada">Temporada:</label>
+  <select id="temporada">
+    <option value="2025">2025</option>
+    <option value="2024">2024</option>
+    <option value="2023">2023</option>
+  </select>
+
+  <br><br>
+
+  <label for="orden">¿Qué partidos quieres ver?</label>
+  <select id="orden">
+    <option value="primeros">Primeros partidos</option>
+    <option value="ultimos">Últimos partidos</option>
+  </select>
+
+  <br><br>
+
+  <label for="cantidad">¿Cuántos partidos quieres ver?</label>
+  <input type="number" id="cantidad" min="1" max="50" value="5" />
+
+  <br><br>
+
+  <button onclick="obtenerDatos()">Buscar</button>
+
+  <pre id="salida">Presiona el botón para ver los partidos...</pre>
+
+  <script>
+    async function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function obtenerDatos() {
+      const salidaElem = document.getElementById("salida");
+      const equipoID = parseInt(document.getElementById("equipoID").value);
+      const ligaID = parseInt(document.getElementById("ligaID").value);
+      const temporada = document.getElementById("temporada").value;
+      const cantidad = parseInt(document.getElementById("cantidad").value);
+      const orden = document.getElementById("orden").value;
+
+      if (isNaN(equipoID) || isNaN(ligaID)) {
+        salidaElem.textContent = "Por favor, ingresa IDs válidos para el equipo y la liga.";
+        return;
+      }
+
+      salidaElem.textContent = "Cargando datos...";
+
+      try {
+        const res = await fetch(`https://api-football-v1.p.rapidapi.com/v3/fixtures?league=${ligaID}&season=${temporada}`, {
+          method: "GET",
+          headers: {
+            "X-RapidAPI-Key": "01fc309268msh86b43ea91c5ca82p1da996jsnaf3f81020b84",
+            "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
+          }
+        });
+
+        const data = await res.json();
+        let salida = "";
+
+        // Filtrar partidos jugados por el equipo
+        const partidosEquipo = data.response.filter(match =>
+          (match.teams.home.id === equipoID || match.teams.away.id === equipoID) &&
+          ["FT", "AET", "PEN"].includes(match.fixture.status.short)
+        );
+
+        if (partidosEquipo.length === 0) {
+          salidaElem.textContent = "No se encontraron partidos jugados para el equipo ingresado.";
+          return;
+        }
+
+        // Ordenar cronológicamente
+        partidosEquipo.sort((a, b) => new Date(a.fixture.date) - new Date(b.fixture.date));
+
+        // Elegir primeros o últimos partidos
+        const partidosMostrar = orden === "primeros"
+          ? partidosEquipo.slice(0, cantidad)
+          : partidosEquipo.slice(-cantidad).reverse();
+
+        for (const match of partidosMostrar) {
+          const fecha = new Date(match.fixture.date).toLocaleString();
+          const estado = match.fixture.status.short;
+          let estadoTexto = "";
+
+          if (estado === "FT") estadoTexto = " (Final)";
+          else if (estado === "AET") estadoTexto = " (Tiempo Extra)";
+          else if (estado === "PEN") estadoTexto = " (Penales)";
+
+          salida += `📅 Fecha: ${fecha}${estadoTexto}\n`;
+          salida += `⚽ Partido: ${match.teams.home.name} vs ${match.teams.away.name}\n`;
+          salida += `🔢 Goles: ${match.goals.home} - ${match.goals.away}\n`;
+          salida += `⏱️ Goles 1er tiempo: ${match.score.halftime.home} - ${match.score.halftime.away}\n`;
+          const goles2TLocal = match.goals.home - match.score.halftime.home;
+          const goles2TVisitante = match.goals.away - match.score.halftime.away;
+          salida += `⏳ Goles 2do tiempo: ${goles2TLocal} - ${goles2TVisitante}\n`;
+          salida += `🧑 Árbitro: ${match.fixture.referee || "No disponible"}\n\n`;
+
+          await sleep(300);
+
+          const statsRes = await fetch(`https://api-football-v1.p.rapidapi.com/v3/fixtures/statistics?fixture=${match.fixture.id}`, {
+            method: "GET",
+            headers: {
+              "X-RapidAPI-Key": "01fc309268msh86b43ea91c5ca82p1da996jsnaf3f81020b84",
+              "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
+            }
+          });
+          const statsData = await statsRes.json();
+
+          statsData.response.forEach(teamStats => {
+            const nombre = teamStats.team.name;
+
+            const getStat = (type) => {
+              const stat = teamStats.statistics.find(s => s.type === type);
+              return stat && stat.value != null ? stat.value : 0;
+            };
+
+            const corners = getStat("Corner Kicks");
+            const faltas = getStat("Fouls");
+            const amarillas = getStat("Yellow Cards");
+            const rojas = getStat("Red Cards");
+            const atajadas = getStat("Saves");
+            const remates = getStat("Total Shots");
+            const rematesAlArco = getStat("Shots on Goal");
+
+            salida += `📊 ${nombre}\n`;
+            salida += `   - Corners: ${corners}\n`;
+            salida += `   - Faltas: ${faltas}\n`;
+            salida += `   - Amarillas: ${amarillas}\n`;
+            salida += `   - Rojas: ${rojas}\n`;
+            salida += `   - Atajadas: ${atajadas}\n`;
+            salida += `   - Remates: ${remates}\n`;
+            salida += `   - Remates al arco: ${rematesAlArco}\n\n`;
+          });
+
+          salida += `---------------------------------------------\n\n`;
+          salidaElem.textContent = salida;
+        }
+
+      } catch (error) {
+        console.error(error);
+        salidaElem.textContent = "Ocurrió un error al obtener los datos.";
+      }
+    }
+  </script>
+</body>
+</html>
