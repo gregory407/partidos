@@ -1,7 +1,7 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Estadísticas de Partidos</title>
   <style>
     body {
@@ -38,11 +38,33 @@
       white-space: pre-wrap;
       overflow-x: auto;
       flex: 1;
-      height: 500px;
+      height: 600px;
     }
 
     button {
       margin-top: 20px;
+    }
+
+    .linea-separadora {
+      border-top: 2px dashed #999;
+      margin: 20px 0;
+      width: 100%;
+    }
+
+    .columna-estadisticas {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 10px;
+    }
+    .columna-estadisticas > div {
+      flex: 1;
+      background: #eee;
+      padding: 6px 10px;
+      border-radius: 4px;
+      white-space: nowrap;
+      font-weight: bold;
+      font-size: 0.9em;
+      text-align: center;
     }
   </style>
 </head>
@@ -54,12 +76,12 @@
       <label for="equipoID">ID del equipo (1):</label>
       <input type="number" id="equipoID" placeholder="Ej: 2315" />
 
-      <br><br>
+      <br /><br />
 
       <label for="ligaID">ID de la liga:</label>
       <input type="number" id="ligaID" placeholder="Ej: 265" />
 
-      <br><br>
+      <br /><br />
 
       <label for="temporada">Temporada:</label>
       <select id="temporada">
@@ -73,7 +95,7 @@
       <label for="equipoID2">ID del equipo (2):</label>
       <input type="number" id="equipoID2" placeholder="Ej: 85" />
 
-      <br><br>
+      <br /><br />
 
       <label for="orden">¿Qué partidos quieres ver?</label>
       <select id="orden">
@@ -81,15 +103,23 @@
         <option value="ultimos">Últimos partidos</option>
       </select>
 
-      <br><br>
+      <br /><br />
 
       <label for="cantidad">¿Cuántos partidos quieres ver?</label>
       <input type="number" id="cantidad" min="1" max="50" value="5" />
     </div>
   </div>
 
-  <div style="width: 100%; max-width: 1000px; display: flex; justify-content: flex-start; margin-top: 10px;">
-  <button onclick="obtenerDatos()">Buscar</button>
+  <div
+    style="
+      width: 100%;
+      max-width: 1000px;
+      display: flex;
+      justify-content: flex-start;
+      margin-top: 10px;
+    "
+  >
+    <button onclick="obtenerDatos()">Buscar</button>
   </div>
 
   <div class="resultados">
@@ -99,118 +129,309 @@
 
   <script>
     async function sleep(ms) {
-      return new Promise(resolve => setTimeout(resolve, ms));
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    function calcularPromedio(valores) {
+      const suma = valores.reduce((acc, val) => acc + val, 0);
+      return valores.length ? suma / valores.length : 0;
+    }
+
+    function estimarRango(promedio, margen = 0.15) {
+      const min = Math.floor(promedio * (1 - margen));
+      const max = Math.ceil(promedio * (1 + margen));
+      return `Entre ${min} y ${max}`;
     }
 
     async function obtenerDatos() {
-      const salidaElem1 = document.getElementById("salida");
-      const salidaElem2 = document.getElementById("salida2");
-      const equipoID = parseInt(document.getElementById("equipoID").value);
-      const equipoID2 = parseInt(document.getElementById("equipoID2").value);
+      const salida1 = document.getElementById("salida");
+      const salida2 = document.getElementById("salida2");
+      const equipo1 = parseInt(document.getElementById("equipoID").value);
+      const equipo2 = parseInt(document.getElementById("equipoID2").value);
       const ligaID = parseInt(document.getElementById("ligaID").value);
       const temporada = document.getElementById("temporada").value;
-      const cantidad = parseInt(document.getElementById("cantidad").value);
       const orden = document.getElementById("orden").value;
+      const cantidad = parseInt(document.getElementById("cantidad").value);
 
-      salidaElem1.textContent = "Cargando datos equipo 1...";
-      salidaElem2.textContent = "Cargando datos equipo 2...";
+      if (
+        !equipo1 ||
+        !equipo2 ||
+        !ligaID ||
+        !temporada ||
+        !orden ||
+        !cantidad ||
+        cantidad < 1
+      ) {
+        alert("Por favor completa todos los campos correctamente.");
+        return;
+      }
 
-      const mostrarEstadisticas = async (equipoID, salidaElem) => {
-        try {
-          const res = await fetch(`https://api-football-v1.p.rapidapi.com/v3/fixtures?league=${ligaID}&season=${temporada}`, {
+      salida1.textContent = "Cargando datos equipo 1...";
+      salida2.textContent = "Cargando datos equipo 2...";
+
+      // Función para obtener partidos según parámetros
+      const getPartidos = async (equipoID, cantidadSolicitada) => {
+        const res = await fetch(
+          `https://api-football-v1.p.rapidapi.com/v3/fixtures?league=${ligaID}&season=${temporada}`,
+          {
             method: "GET",
             headers: {
-              "X-RapidAPI-Key": "01fc309268msh86b43ea91c5ca82p1da996jsnaf3f81020b84",
-              "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
-            }
-          });
-
-          const data = await res.json();
-          let salida = "";
-
-          const partidosEquipo = data.response.filter(match =>
-            (match.teams.home.id === equipoID || match.teams.away.id === equipoID) &&
-            ["FT", "AET", "PEN"].includes(match.fixture.status.short)
-          );
-
-          if (partidosEquipo.length === 0) {
-            salidaElem.textContent = "No se encontraron partidos jugados para el equipo ingresado.";
-            return;
+              "X-RapidAPI-Key":
+                "01fc309268msh86b43ea91c5ca82p1da996jsnaf3f81020b84",
+              "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com",
+            },
           }
+        );
+        const data = await res.json();
+        const partidos = data.response
+          .filter(
+            (m) =>
+              (m.teams.home.id === equipoID || m.teams.away.id === equipoID) &&
+              ["FT", "AET", "PEN"].includes(m.fixture.status.short)
+          )
+          .sort((a, b) => new Date(a.fixture.date) - new Date(b.fixture.date));
 
-          partidosEquipo.sort((a, b) => new Date(a.fixture.date) - new Date(b.fixture.date));
+        return orden === "primeros"
+          ? partidos.slice(0, cantidadSolicitada)
+          : partidos.slice(-cantidadSolicitada).reverse();
+      };
+      const mostrarDatos = async (equipoID, salidaElem, partidos, estimaciones) => {
+        let salida = estimaciones;
+        for (const match of partidos) {
+          const fecha = new Date(match.fixture.date).toLocaleString();
+          const estado = match.fixture.status.short;
+          let estadoTexto = "";
 
-          const partidosMostrar = orden === "primeros"
-            ? partidosEquipo.slice(0, cantidad)
-            : partidosEquipo.slice(-cantidad).reverse();
+          if (estado === "FT") estadoTexto = " (Final)";
+          else if (estado === "AET") estadoTexto = " (Tiempo Extra)";
+          else if (estado === "PEN") estadoTexto = " (Penales)";
 
-          for (const match of partidosMostrar) {
-            const fecha = new Date(match.fixture.date).toLocaleString();
-            const estado = match.fixture.status.short;
-            let estadoTexto = "";
+          salida += `📅 Fecha: ${fecha}${estadoTexto}\n`;
+          salida += `⚽ Partido: ${match.teams.home.name} vs ${match.teams.away.name}\n`;
+          salida += `🔢 Goles: ${match.goals.home} - ${match.goals.away}\n`;
+          salida += `⏱️ Goles 1er tiempo: ${match.score.halftime.home} - ${match.score.halftime.away}\n`;
+          const goles2TLocal = match.goals.home - match.score.halftime.home;
+          const goles2TVisitante = match.goals.away - match.score.halftime.away;
+          salida += `⏳ Goles 2do tiempo: ${goles2TLocal} - ${goles2TVisitante}\n`;
+          salida += `🧑 Árbitro: ${match.fixture.referee || "No disponible"}\n\n`;
 
-            if (estado === "FT") estadoTexto = " (Final)";
-            else if (estado === "AET") estadoTexto = " (Tiempo Extra)";
-            else if (estado === "PEN") estadoTexto = " (Penales)";
+          await sleep(300);
 
-            salida += `📅 Fecha: ${fecha}${estadoTexto}\n`;
-            salida += `⚽ Partido: ${match.teams.home.name} vs ${match.teams.away.name}\n`;
-            salida += `🔢 Goles: ${match.goals.home} - ${match.goals.away}\n`;
-            salida += `⏱️ Goles 1er tiempo: ${match.score.halftime.home} - ${match.score.halftime.away}\n`;
-            const goles2TLocal = match.goals.home - match.score.halftime.home;
-            const goles2TVisitante = match.goals.away - match.score.halftime.away;
-            salida += `⏳ Goles 2do tiempo: ${goles2TLocal} - ${goles2TVisitante}\n`;
-            salida += `🧑 Árbitro: ${match.fixture.referee || "No disponible"}\n\n`;
-
-            await sleep(300);
-
-            const statsRes = await fetch(`https://api-football-v1.p.rapidapi.com/v3/fixtures/statistics?fixture=${match.fixture.id}`, {
+          const statsRes = await fetch(
+            `https://api-football-v1.p.rapidapi.com/v3/fixtures/statistics?fixture=${match.fixture.id}`,
+            {
               method: "GET",
               headers: {
-                "X-RapidAPI-Key": "01fc309268msh86b43ea91c5ca82p1da996jsnaf3f81020b84",
-                "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
-              }
-            });
+                "X-RapidAPI-Key":
+                  "01fc309268msh86b43ea91c5ca82p1da996jsnaf3f81020b84",
+                "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com",
+              },
+            }
+          );
 
+          const statsData = await statsRes.json();
+
+          statsData.response.forEach((teamStats) => {
+            const nombre = teamStats.team.name;
+            const getStat = (type) => {
+              const stat = teamStats.statistics.find((s) => s.type === type);
+              return stat && stat.value != null ? stat.value : 0;
+            };
+
+            const corners = getStat("Corner Kicks");
+            const faltas = getStat("Fouls");
+            const amarillas = getStat("Yellow Cards");
+            const rojas = getStat("Red Cards");
+            const atajadas = getStat("Saves");
+            const remates = getStat("Total Shots");
+            const rematesAlArco = getStat("Shots on Goal");
+
+            salida += `📊 ${nombre}\n`;
+            salida += `   - Corners: ${corners}\n`;
+            salida += `   - Faltas: ${faltas}\n`;
+            salida += `   - Amarillas: ${amarillas}\n`;
+            salida += `   - Rojas: ${rojas}\n`;
+            salida += `   - Atajadas: ${atajadas}\n`;
+            salida += `   - Remates: ${remates}\n`;
+            salida += `   - Remates al arco: ${rematesAlArco}\n\n`;
+          });
+
+          salida += `<div class="linea-separadora"></div>\n\n`;
+        }
+        salidaElem.innerHTML = salida.replace(/\n/g, "<br>");
+      };
+
+      const calcularEstimacionesParte = (partidos, equipoID) => {
+        // Acumula datos por mitad y totales para goles, remates y corners
+        const data = {
+          goles1T: [],
+          goles2T: [],
+          remates1T: [],
+          remates2T: [],
+          corners1T: [],
+          corners2T: [],
+          cornersTotales: [],
+          faltasTotales: [],
+          amarillasTotales: [],
+          rematesTotales: [],
+        };
+
+        return new Promise(async (resolve) => {
+          for (const match of partidos) {
+            const statsRes = await fetch(
+              `https://api-football-v1.p.rapidapi.com/v3/fixtures/statistics?fixture=${match.fixture.id}`,
+              {
+                method: "GET",
+                headers: {
+                  "X-RapidAPI-Key":
+                    "01fc309268msh86b43ea91c5ca82p1da996jsnaf3f81020b84",
+                  "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com",
+                },
+              }
+            );
             const statsData = await statsRes.json();
 
-            statsData.response.forEach(teamStats => {
-              const nombre = teamStats.team.name;
+            const equipoStats = statsData.response.find(
+              (s) => s.team.id === equipoID
+            );
 
-              const getStat = (type) => {
-                const stat = teamStats.statistics.find(s => s.type === type);
+            if (equipoStats) {
+              const get = (type) => {
+                const stat = equipoStats.statistics.find((s) => s.type === type);
                 return stat && stat.value != null ? stat.value : 0;
               };
 
-              const corners = getStat("Corner Kicks");
-              const faltas = getStat("Fouls");
-              const amarillas = getStat("Yellow Cards");
-              const rojas = getStat("Red Cards");
-              const atajadas = getStat("Saves");
-              const remates = getStat("Total Shots");
-              const rematesAlArco = getStat("Shots on Goal");
+              const goles1T = match.score.halftime.home;
+              const goles1TVisitante = match.score.halftime.away;
+              const goles2T = match.goals.home - goles1T;
+              const goles2TVisitante = match.goals.away - goles1TVisitante;
 
-              salida += `📊 ${nombre}\n`;
-              salida += `   - Corners: ${corners}\n`;
-              salida += `   - Faltas: ${faltas}\n`;
-              salida += `   - Amarillas: ${amarillas}\n`;
-              salida += `   - Rojas: ${rojas}\n`;
-              salida += `   - Atajadas: ${atajadas}\n`;
-              salida += `   - Remates: ${remates}\n`;
-              salida += `   - Remates al arco: ${rematesAlArco}\n\n`;
-            });
+              if (equipoID === match.teams.home.id) {
+                data.goles1T.push(goles1T);
+                data.goles2T.push(goles2T);
+              } else {
+                data.goles1T.push(goles1TVisitante);
+                data.goles2T.push(goles2TVisitante);
+              }
 
-            salida += `---------------------------------------------\n\n`;
-            salidaElem.textContent = salida;
+              data.cornersTotales.push(get("Corner Kicks"));
+              data.faltasTotales.push(get("Fouls"));
+              data.amarillasTotales.push(get("Yellow Cards"));
+              data.rematesTotales.push(get("Total Shots"));
+
+              // No hay estadística directa por mitad para corners y remates en API, 
+              // así que se estiman igual que la mitad, como la mitad del total.
+              // Esto es una aproximación, podría ajustarse si hay datos por tiempo en el API.
+
+              // Si hubiera datos por mitad, los colocarías aquí.
+
+              data.corners1T.push(Math.round(get("Corner Kicks") / 2));
+              data.corners2T.push(
+                get("Corner Kicks") - Math.round(get("Corner Kicks") / 2)
+              );
+              data.remates1T.push(Math.round(get("Total Shots") / 2));
+              data.remates2T.push(
+                get("Total Shots") - Math.round(get("Total Shots") / 2)
+              );
+
+            }
+
+            await sleep(200);
           }
-        } catch (error) {
-          console.error(error);
-          salidaElem.textContent = "Ocurrió un error al obtener los datos.";
-        }
+          resolve(data);
+        });
       };
 
-      if (!isNaN(equipoID)) mostrarEstadisticas(equipoID, salidaElem1);
-      if (!isNaN(equipoID2)) mostrarEstadisticas(equipoID2, salidaElem2);
+      const estimarTexto = (datos) => {
+        return estimarRango(calcularPromedio(datos));
+      };
+
+      const [partidos1, partidos2] = await Promise.all([
+        getPartidos(equipo1, cantidad),
+        getPartidos(equipo2, cantidad),
+      ]);
+
+      const nextMatchRes = await fetch(
+        `https://api-football-v1.p.rapidapi.com/v3/fixtures/headtohead?h2h=${equipo1}-${equipo2}&season=${temporada}`,
+        {
+          method: "GET",
+          headers: {
+            "X-RapidAPI-Key":
+              "01fc309268msh86b43ea91c5ca82p1da996jsnaf3f81020b84",
+            "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com",
+          },
+        }
+      );
+
+      const nextMatchData = await nextMatchRes.json();
+      const futuros = nextMatchData.response.filter(
+        (m) => new Date(m.fixture.date) > new Date()
+      );
+      futuros.sort((a, b) => new Date(a.fixture.date) - new Date(b.fixture.date));
+      const proximo = futuros[0];
+
+      let estimaciones = "";
+
+      if (proximo) {
+        const partidos5equipo1 = await getPartidos(equipo1, 5);
+        const partidos5equipo2 = await getPartidos(equipo2, 5);
+
+        const stats1 = await calcularEstimacionesParte(partidos5equipo1, equipo1);
+        const stats2 = await calcularEstimacionesParte(partidos5equipo2, equipo2);
+
+        estimaciones += `<div class="columna-estadisticas"><div></div><div>Equipo 1</div><div>Equipo 2</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas"><div>Goles 1T</div><div>${estimarTexto(
+          stats1.goles1T
+        )}</div><div>${estimarTexto(stats2.goles1T)}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas"><div>Goles 2T</div><div>${estimarTexto(
+          stats1.goles2T
+        )}</div><div>${estimarTexto(stats2.goles2T)}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas"><div>Remates 1T</div><div>${estimarTexto(
+          stats1.remates1T
+        )}</div><div>${estimarTexto(stats2.remates1T)}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas"><div>Remates 2T</div><div>${estimarTexto(
+          stats1.remates2T
+        )}</div><div>${estimarTexto(stats2.remates2T)}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas"><div>Corners 1T</div><div>${estimarTexto(
+          stats1.corners1T
+        )}</div><div>${estimarTexto(stats2.corners1T)}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas"><div>Corners 2T</div><div>${estimarTexto(
+          stats1.corners2T
+        )}</div><div>${estimarTexto(stats2.corners2T)}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas"><div>Corners totales</div><div>${estimarTexto(
+          stats1.cornersTotales
+        )}</div><div>${estimarTexto(stats2.cornersTotales)}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas"><div>Faltas totales</div><div>${estimarTexto(
+          stats1.faltasTotales
+        )}</div><div>${estimarTexto(stats2.faltasTotales)}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas"><div>Tarjetas amarillas</div><div>${estimarTexto(
+          stats1.amarillasTotales
+        )}</div><div>${estimarTexto(stats2.amarillasTotales)}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas"><div>Remates totales</div><div>${estimarTexto(
+          stats1.rematesTotales
+        )}</div><div>${estimarTexto(stats2.rematesTotales)}</div></div>`;
+
+        estimaciones = `<strong>🔮 Estimaciones adicionales basadas en los últimos 5 partidos:</strong><br>` + estimaciones;
+
+        estimaciones = `<strong>📅 Próximo partido: ${new Date(
+          proximo.fixture.date
+        ).toLocaleString()}</strong><br><strong>⚽ ${
+          proximo.teams.home.name
+        } vs ${proximo.teams.away.name}</strong><br><br>` + estimaciones + `<br><div class="linea-separadora"></div><br>`;
+      }
+
+      await mostrarDatos(equipo1, salida1, partidos1, estimaciones);
+      await mostrarDatos(equipo2, salida2, partidos2, estimaciones);
     }
   </script>
 </body>
