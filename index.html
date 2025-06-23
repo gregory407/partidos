@@ -121,6 +121,7 @@
   >
     <button onclick="obtenerDatos()">Buscar</button>
   </div>
+  <div id="estimaciones" style="margin-top: 20px; max-width: 1000px; text-align: center;"></div>
 
   <div class="resultados">
     <pre id="salida">Presiona el botón para ver los partidos del equipo 1...</pre>
@@ -136,12 +137,30 @@
       const suma = valores.reduce((acc, val) => acc + val, 0);
       return valores.length ? suma / valores.length : 0;
     }
+    function estimarTexto(valores, tipo = "") {
+      return estimarRango(calcularPromedio(valores), tipo);
+    }
 
-    function estimarRango(promedio, margen = 0.15) {
+    function promedioTexto(valores, decimales = 1) {
+      const promedio = calcularPromedio(valores);
+      return promedio.toFixed(decimales);
+    }
+
+    function estimarRango(promedio, tipo = "") {
+      let margen = 0.15; // Margen por defecto
+
+  // Márgenes personalizados según el tipo de dato
+      if (tipo.includes("goles")) margen = 0.10;
+      else if (tipo.includes("remate")) margen = 0.20;
+      else if (tipo.includes("falta")) margen = 0.15;
+      else if (tipo.includes("tarjeta")) margen = 0.20;
+      else if (tipo.includes("offside") || tipo.includes("fuera")) margen = 0.25;
+      else if (tipo.includes("corner")) margen = 0.15;
+
       const min = Math.floor(promedio * (1 - margen));
       const max = Math.ceil(promedio * (1 + margen));
       return `Entre ${min} y ${max}`;
-    }
+     }
 
     async function obtenerDatos() {
       const salida1 = document.getElementById("salida");
@@ -182,6 +201,7 @@
             },
           }
         );
+
         const data = await res.json();
         const partidos = data.response
           .filter(
@@ -263,18 +283,28 @@
 
       const calcularEstimacionesParte = (partidos, equipoID) => {
         // Acumula datos por mitad y totales para goles, remates y corners
-        const data = {
-          goles1T: [],
-          goles2T: [],
-          remates1T: [],
-          remates2T: [],
-          corners1T: [],
-          corners2T: [],
-          cornersTotales: [],
-          faltasTotales: [],
-          amarillasTotales: [],
-          rematesTotales: [],
-        };
+         const data = {
+         goles1T: [],
+         goles2T: [],
+         remates1T: [],
+         remates2T: [],
+         rematesTotales: [],
+         rematesArco1T: [],
+         rematesArco2T: [],
+         rematesArcoTotales: [],
+         corners1T: [],
+         corners2T: [],
+         cornersTotales: [],
+         faltasTotales: [],
+         amarillasTotales: [],
+         offsidesTotales: [],
+         posesion: [],
+         pasesTotales: [],
+         pasesPrecisos: [],
+         pasesPrecisionPorcentaje: [],
+         penales: [],
+
+          };
 
         return new Promise(async (resolve) => {
           for (const match of partidos) {
@@ -305,19 +335,37 @@
               const goles1TVisitante = match.score.halftime.away;
               const goles2T = match.goals.home - goles1T;
               const goles2TVisitante = match.goals.away - goles1TVisitante;
-
-              if (equipoID === match.teams.home.id) {
+              const rematesAlArco = get("Shots on Goal");
+              const posesionRaw = get("Ball Possession");
+              const posesion = typeof posesionRaw === "string" ? parseFloat(posesionRaw.replace("%", "")) : posesionRaw;
+              
+                if (equipoID === match.teams.home.id) {
                 data.goles1T.push(goles1T);
                 data.goles2T.push(goles2T);
               } else {
                 data.goles1T.push(goles1TVisitante);
                 data.goles2T.push(goles2TVisitante);
+                data.rematesArcoTotales = data.rematesArcoTotales || [];
+                data.rematesArco1T = data.rematesArco1T || [];
+                data.rematesArco2T = data.rematesArco2T || [];
+                data.rematesArcoTotales.push(rematesAlArco);
+                data.rematesArco1T.push(Math.round(rematesAlArco / 2));
+                data.rematesArco2T.push(rematesAlArco - Math.round(rematesAlArco / 2));
+
               }
 
+              data.offsidesTotales.push(get("Offsides"));
               data.cornersTotales.push(get("Corner Kicks"));
               data.faltasTotales.push(get("Fouls"));
               data.amarillasTotales.push(get("Yellow Cards"));
               data.rematesTotales.push(get("Total Shots"));
+              data.posesion.push(posesion);
+              data.pasesTotales.push(get("Total passes"));
+              data.pasesPrecisos.push(get("Passes accurate"));
+              const precisionRaw = get("Passes %");
+              const precision = typeof precisionRaw === "string" ? parseFloat(precisionRaw) : precisionRaw || 0;
+              data.pasesPrecisionPorcentaje.push(precision);
+              data.penales.push(get("Penalties"));
 
               // No hay estadística directa por mitad para corners y remates en API, 
               // así que se estiman igual que la mitad, como la mitad del total.
@@ -378,48 +426,112 @@
 
         const stats1 = await calcularEstimacionesParte(partidos5equipo1, equipo1);
         const stats2 = await calcularEstimacionesParte(partidos5equipo2, equipo2);
+        const cornersTotalesCombinados = stats1.cornersTotales.map((v, i) => v + (stats2.cornersTotales[i] || 0));
+        const faltasCombinadas = stats1.faltasTotales.map((v, i) => v + (stats2.faltasTotales[i] || 0));
+        const golesCombinados = stats1.goles1T.map((v, i) => v + stats1.goles2T[i] + (stats2.goles1T[i] || 0) + (stats2.goles2T[i] || 0));
+        const rematesCombinados = stats1.rematesTotales.map((v, i) => v + (stats2.rematesTotales[i] || 0));
+        const rematesArcoCombinados1T = stats1.rematesArco1T.map((v, i) => v + (stats2.rematesArco1T[i] || 0));
+        const rematesArcoCombinados2T = stats1.rematesArco2T.map((v, i) => v + (stats2.rematesArco2T[i] || 0));
+        const rematesArcoCombinadosTotales = stats1.rematesArcoTotales.map((v, i) => v + (stats2.rematesArcoTotales[i] || 0));
+        const offsidesCombinados = stats1.offsidesTotales.map((v, i) => v + (stats2.offsidesTotales[i] || 0));
+        const penalesCombinados = stats1.penales.map((v, i) => v + stats2.penales[i]);
 
         estimaciones += `<div class="columna-estadisticas"><div></div><div>Equipo 1</div><div>Equipo 2</div></div>`;
 
         estimaciones += `<div class="columna-estadisticas"><div>Goles 1T</div><div>${estimarTexto(
-          stats1.goles1T
-        )}</div><div>${estimarTexto(stats2.goles1T)}</div></div>`;
+          stats1.goles1T, "goles"
+        )}</div><div>${estimarTexto(stats2.goles1T, "goles")}</div></div>`;
 
         estimaciones += `<div class="columna-estadisticas"><div>Goles 2T</div><div>${estimarTexto(
-          stats1.goles2T
-        )}</div><div>${estimarTexto(stats2.goles2T)}</div></div>`;
+          stats1.goles2T, "goles"
+        )}</div><div>${estimarTexto(stats2.goles2T, "goles")}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas" style="justify-content: center;"><div style="flex: none; width: 100%; background: #e8ffe8; font-size: 1em;">⚽ Goles combinados: ${estimarTexto(golesCombinados)}</div></div>`;
 
         estimaciones += `<div class="columna-estadisticas"><div>Remates 1T</div><div>${estimarTexto(
-          stats1.remates1T
-        )}</div><div>${estimarTexto(stats2.remates1T)}</div></div>`;
+          stats1.remates1T, "remates"
+        )}</div><div>${estimarTexto(stats2.remates1T, "remates")}</div></div>`;
 
         estimaciones += `<div class="columna-estadisticas"><div>Remates 2T</div><div>${estimarTexto(
-          stats1.remates2T
-        )}</div><div>${estimarTexto(stats2.remates2T)}</div></div>`;
+          stats1.remates2T, "remates"
+        )}</div><div>${estimarTexto(stats2.remates2T, "remates")}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas"><div>Disparos al arco 1T</div><div>${estimarTexto(
+          stats1.rematesArco1T, "remates"
+        )}</div><div>${estimarTexto(stats2.rematesArco1T, "remates")}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas"><div>Disparos al arco 2T</div><div>${estimarTexto(
+          stats1.rematesArco2T, "remates"
+        )}</div><div>${estimarTexto(stats2.rematesArco2T, "remates")}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas" style="justify-content: center;"><div style="flex: none; width: 100%; background: #e0f7ff; font-size: 1em;">🎯 Disparos al arco combinados 1T: ${estimarTexto(rematesArcoCombinados1T)}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas" style="justify-content: center;"><div style="flex: none; width: 100%; background: #e0f7ff; font-size: 1em;">🎯 Disparos al arco combinados 2T: ${estimarTexto(rematesArcoCombinados2T)}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas"><div>Disparos al arco totales</div><div>${estimarTexto(
+          stats1.rematesArcoTotales, "remates"
+        )}</div><div>${estimarTexto(stats2.rematesArcoTotales, "remates")}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas" style="justify-content: center;"><div style="flex: none; width: 100%; background: #e0f0ff; font-size: 1em;">🎯 Disparos al arco combinados totales: ${estimarTexto(rematesArcoCombinadosTotales)}</div></div>`;
 
         estimaciones += `<div class="columna-estadisticas"><div>Corners 1T</div><div>${estimarTexto(
-          stats1.corners1T
-        )}</div><div>${estimarTexto(stats2.corners1T)}</div></div>`;
+          stats1.corners1T, "corner"
+        )}</div><div>${estimarTexto(stats2.corners1T, "corner")}</div></div>`;
 
         estimaciones += `<div class="columna-estadisticas"><div>Corners 2T</div><div>${estimarTexto(
-          stats1.corners2T
-        )}</div><div>${estimarTexto(stats2.corners2T)}</div></div>`;
+          stats1.corners2T, "corner"
+        )}</div><div>${estimarTexto(stats2.corners2T, "corner")}</div></div>`;
 
         estimaciones += `<div class="columna-estadisticas"><div>Corners totales</div><div>${estimarTexto(
-          stats1.cornersTotales
-        )}</div><div>${estimarTexto(stats2.cornersTotales)}</div></div>`;
+          stats1.cornersTotales, "corner"
+        )}</div><div>${estimarTexto(stats2.cornersTotales, "corner")}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas" style="justify-content: center;"><div style="flex: none; width: 100%; background: #d3e5ff; font-size: 1em;">🌐 Corners combinados: ${estimarTexto(cornersTotalesCombinados)}</div></div>`;
 
         estimaciones += `<div class="columna-estadisticas"><div>Faltas totales</div><div>${estimarTexto(
-          stats1.faltasTotales
-        )}</div><div>${estimarTexto(stats2.faltasTotales)}</div></div>`;
+          stats1.faltasTotales, "falta"
+        )}</div><div>${estimarTexto(stats2.faltasTotales, "falta")}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas" style="justify-content: center;"><div style="flex: none; width: 100%; background: #ffe0e0; font-size: 1em;">🤝 Faltas Combinadas: ${estimarTexto(faltasCombinadas)}</div></div>`;
 
         estimaciones += `<div class="columna-estadisticas"><div>Tarjetas amarillas</div><div>${estimarTexto(
-          stats1.amarillasTotales
-        )}</div><div>${estimarTexto(stats2.amarillasTotales)}</div></div>`;
+          stats1.amarillasTotales, "tarjeta"
+        )}</div><div>${estimarTexto(stats2.amarillasTotales, "tarjeta")}</div></div>`;
 
         estimaciones += `<div class="columna-estadisticas"><div>Remates totales</div><div>${estimarTexto(
-          stats1.rematesTotales
-        )}</div><div>${estimarTexto(stats2.rematesTotales)}</div></div>`;
+          stats1.rematesTotales, "remates"
+        )}</div><div>${estimarTexto(stats2.rematesTotales, "remates")}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas" style="justify-content: center;"><div style="flex: none; width: 100%; background: #fffacc; font-size: 1em;">🎯 Remates combinados: ${estimarTexto(rematesCombinados)}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas"><div>Fueras de juego</div><div>${estimarTexto(
+          stats1.offsidesTotales, "offside"
+        )}</div><div>${estimarTexto(stats2.offsidesTotales, "offside")}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas" style="justify-content: center;"><div style="flex: none; width: 100%; background: #f0eaff; font-size: 1em;">🚩 Fueras de juego combinados: ${estimarTexto(offsidesCombinados)}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas"><div>Penales cobrados</div><div>${promedioTexto(
+           stats1.penales, 1
+        )}</div><div>${promedioTexto(stats2.penales, 1)}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas" style="justify-content: center;"><div style="flex: none; width: 100%; background: #c7c8ca; font-size: 1em;">Penales combinados: ${promedioTexto(penalesCombinados)}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas"><div>Posesión (%)</div><div>${promedioTexto(
+          stats1.posesion
+        )}</div><div>${promedioTexto(stats2.posesion)}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas"><div>Pases totales</div><div>${promedioTexto(
+          stats1.pasesTotales
+        )}</div><div>${promedioTexto(stats2.pasesTotales)}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas"><div>Pases precisos</div><div>${promedioTexto(
+          stats1.pasesPrecisos
+        )}</div><div>${promedioTexto(stats2.pasesPrecisos)}</div></div>`;
+
+        estimaciones += `<div class="columna-estadisticas"><div>Precisión (%)</div><div>${promedioTexto(
+          stats1.pasesPrecisionPorcentaje
+        )}</div><div>${promedioTexto(stats2.pasesPrecisionPorcentaje)}</div></div>`;
+
 
         estimaciones = `<strong>🔮 Estimaciones adicionales basadas en los últimos 5 partidos:</strong><br>` + estimaciones;
 
@@ -430,8 +542,9 @@
         } vs ${proximo.teams.away.name}</strong><br><br>` + estimaciones + `<br><div class="linea-separadora"></div><br>`;
       }
 
-      await mostrarDatos(equipo1, salida1, partidos1, estimaciones);
-      await mostrarDatos(equipo2, salida2, partidos2, estimaciones);
+      document.getElementById("estimaciones").innerHTML = estimaciones;
+      await mostrarDatos(equipo1, salida1, partidos1, "");
+      await mostrarDatos(equipo2, salida2, partidos2, "");
     }
   </script>
 </body>
